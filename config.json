@@ -1,0 +1,25 @@
+{
+  "_comment": "Weights don't need to sum to 1 — the engine normalises them automatically.",
+
+  "weights": {
+    "skills":             0.30,
+    "experience":         0.25,
+    "education":          0.15,
+    "salary_fit":         0.10,
+    "location":           0.08,
+    "career_trajectory":  0.07,
+    "certifications":     0.03,
+    "availability":       0.02
+  },
+
+  "_notes": {
+    "skills":            "TF-IDF + cosine similarity. Highest weight — most important.",
+    "experience":        "Gaussian bell curve, peaks at midpoint of min-max range.",
+    "education":         "Degree tier + institution tier + field match + GPA sigmoid.",
+    "salary_fit":        "Gaussian around salary midpoint. Hard zero >1.25x max salary.",
+    "location":          "Exact city = 1.0, willing to relocate = 0.75, no = 0.25.",
+    "career_trajectory": "Exponential-weighted company tier quality + hopping penalty.",
+    "certifications":    "Relevance to job + breadth bonus.",
+    "availability":      "Sigmoid decay on notice period vs job's max_notice_period_days."
+  }
+}
