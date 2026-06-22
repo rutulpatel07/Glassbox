@@ -1,0 +1,22 @@
+# Mirror this to the portal at upload. Replace ALL CAPS placeholders.
+team_name: TEAM_NAME
+primary_contact_name: Vatsal
+primary_contact_email: YOUR_EMAIL
+primary_contact_phone: YOUR_PHONE
+github_repository_url: https://github.com/USERNAME/REPO
+sandbox_demo_link: https://COLAB_OR_HF_SPACES_LINK
+ai_tools_declared:
+  - Claude          # used for engineering assistance; ranking logic is deterministic, no AI/LLM in rank.py
+compute_environment_summary: "CPU-only, 16GB RAM, Python 3.11 — no GPU, no network during ranking"
+team_members:
+  - name: Vatsal
+    email: YOUR_EMAIL
+  - name: Rutul
+    email: RUTUL_EMAIL
+methodology_summary: >
+  Glass-box deterministic ranker (no AI/LLM/embeddings/network). Layered pipeline:
+  honeypot/impossibility gate, role-fit gate (defeats keyword-stuffers), layered
+  domain-evidence reading of career descriptions (explicit retrieval/ranking signal
+  vs. capped plain-language signal), fit pillars, do-NOT-want penalties, and a
+  behavioral availability multiplier. The reasoning column is a deterministic
+  readout of the same score trace, so it cannot contradict the rank or hallucinate.
