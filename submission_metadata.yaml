@@ -1,22 +1,37 @@
-# Mirror this to the portal at upload. Replace ALL CAPS placeholders.
-team_name: TEAM_NAME
-primary_contact_name: Vatsal
-primary_contact_email: YOUR_EMAIL
+team_name: CampusCollab
+primary_contact_name: Vatsal Trivedi
+primary_contact_email: campuscollab.code@gmail.com
 primary_contact_phone: YOUR_PHONE
-github_repository_url: https://github.com/USERNAME/REPO
+github_repository_url: https://github.com/USERNAME/redrob-ranking
 sandbox_demo_link: https://COLAB_OR_HF_SPACES_LINK
 ai_tools_declared:
-  - Claude          # used for engineering assistance; ranking logic is deterministic, no AI/LLM in rank.py
-compute_environment_summary: "CPU-only, 16GB RAM, Python 3.11 — no GPU, no network during ranking"
+  - Claude  # used for engineering assistance; all ranking and reasoning logic is deterministic, zero LLM in rank.py or reasoning.py
+compute_environment_summary: >
+  CPU-only, ~3.1 GB peak RAM, Python 3.9.6, Apple Silicon M-series.
+  No GPU, no network calls, no LLM or embedding model inference during ranking.
+  Full 100 K pool: ~90 s wall-clock, well inside 5 min / 16 GB budget.
 team_members:
-  - name: Vatsal
-    email: YOUR_EMAIL
+  - name: Vatsal Trivedi
+    email: campuscollab.code@gmail.com
   - name: Rutul
     email: RUTUL_EMAIL
 methodology_summary: >
-  Glass-box deterministic ranker (no AI/LLM/embeddings/network). Layered pipeline:
-  honeypot/impossibility gate, role-fit gate (defeats keyword-stuffers), layered
-  domain-evidence reading of career descriptions (explicit retrieval/ranking signal
-  vs. capped plain-language signal), fit pillars, do-NOT-want penalties, and a
-  behavioral availability multiplier. The reasoning column is a deterministic
-  readout of the same score trace, so it cannot contradict the rank or hallucinate.
+  Glass-box deterministic ranker (no AI/LLM/network during ranking).
+  Five-phase pipeline: (1) multiprocessing feature extraction via six scoring
+  layers — L0 honeypot/impossibility gate, L1 role-fit gate that defeats
+  keyword-stuffers, L2 layered domain-evidence reading of career descriptions
+  (explicit retrieval/LTR/recsys/vector/eval signal vs. hard-capped adjacent
+  plain-ML signal), L3 nine-pillar fit scoring (domain evidence, skill substance,
+  seniority, product-vs-services, external validation, eval frameworks, semantic
+  similarity, Python signal, location, notice, platform quality), L4
+  do-NOT-want multiplicative penalties (research-only, IT-services-only,
+  CV/robotics, job-hopping), L5 behavioral availability multiplier;
+  (2) population calibration — three distribution-sensitive pillars replaced
+  by percentile ranks across the full 100 K pool; (3) Isolation Forest anomaly
+  detection as an unsupervised second-opinion honeypot layer; (4) bootstrap
+  rank-confidence from 500 log-normal weight perturbations; (5) deterministic
+  sort and spec-compliant CSV output. The reasoning column is a deterministic
+  readout of the same score trace — every claim is grounded in the candidate's
+  profile data and cannot contradict the rank or hallucinate. Scored against
+  500 hand-labeled tiers: COMPOSITE 0.6532 (NDCG@10 0.7699, NDCG@50 0.6019,
+  MAP 0.2511, P@10 1.0000).
