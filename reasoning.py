@@ -382,7 +382,10 @@ def make_rich_reasoning(c, trace, rank):
     parts = [s1]
     if s2:
         parts.append(s2)
-    return " ".join(parts)[:400]
+    # No length cap here — s1/s2 are already complete sentences; the final
+    # length budget (with the rank-stability suffix) is enforced once, safely,
+    # by make_reasoning() in rank.py.
+    return " ".join(parts)
 
 
 # ── Verification helpers ──────────────────────────────────────────────────────

@@ -1,0 +1,14 @@
+# Local-only holding area: dead/orphaned files, duplicates, and test
+# artifacts that aren't part of the submitted engine. Never pushed.
+extra/
+
+# Organizer-provided hackathon bundle: input data, not ours to redistribute,
+# and candidates.jsonl alone is ~487MB (over GitHub's 100MB file limit).
+India_runs_data_and_ai_challenge/
+
+# Claude Code local tool settings — not part of the submission.
+.claude/
+
+# Python bytecode cache.
+__pycache__/
+*.pyc

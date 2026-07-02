@@ -743,6 +743,22 @@ def predict_tier(trace):
     if f >= 0.390: return 1
     return 0
 
+def _clip_to_boundary(s, limit):
+    """Clip s to at most `limit` chars, cutting at the last sentence/clause
+    boundary within the budget rather than mid-word. Falls back to the last
+    whole word, then to a hard cut only if nothing else is available."""
+    if len(s) <= limit:
+        return s
+    s = s[:limit]
+    cut = max(s.rfind(". "), s.rfind("; "))
+    if cut >= limit * 0.4:
+        return s[:cut + 1].rstrip()
+    cut = s.rfind(" ")
+    if cut >= limit * 0.4:
+        return s[:cut].rstrip()
+    return s.rstrip()
+
+
 def make_reasoning(c, trace, tier, rank_stability=None, rank=0):
     title = c.get("profile", {}).get("current_title", "professional")
 
@@ -770,15 +786,26 @@ def make_reasoning(c, trace, tier, rank_stability=None, rank=0):
         text = f"{title} (tier {tier}).{top_concern}"
 
     # Rank-stability annotation: sensitivity to weight perturbation, NOT a ranking input
+    suffix = ""
     if rank_stability is not None:
         if rank_stability >= 0.85:
-            text += f" Rank stability: {rank_stability:.0%} of weight perturbations agree."
+            suffix = f" Rank stability: {rank_stability:.0%} of weight perturbations agree."
         elif rank_stability >= 0.50:
-            text += f" Rank stability: {rank_stability:.0%} of weight perturbations agree; verify against JD."
+            suffix = f" Rank stability: {rank_stability:.0%} of weight perturbations agree; verify against JD."
         else:
-            text += f" Rank stability: {rank_stability:.0%} of weight perturbations agree; manual review recommended."
+            suffix = f" Rank stability: {rank_stability:.0%} of weight perturbations agree; manual review recommended."
 
-    return text[:350]
+    LIMIT = 350
+    if len(text) + len(suffix) <= LIMIT:
+        return text + suffix
+
+    # Prefer keeping the rank-stability suffix — clip the base text to make room for it.
+    clipped = _clip_to_boundary(text, LIMIT - len(suffix))
+    if clipped and len(clipped) + len(suffix) <= LIMIT:
+        return clipped + suffix
+
+    # Suffix doesn't fit even against a minimally clipped base — drop it, clip base alone.
+    return _clip_to_boundary(text, LIMIT)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # RICH DISPLAY HELPERS  (only active when --rich is passed and rich is available)
@@ -1041,13 +1068,16 @@ def _cascade_sort_key(item):
 
 def _make_cascade_rows(pool, top_n=100):
     rows, prev = [], float("inf")
+    # EPS is a strict gap enforced on the *unrounded* running value, not the
+    # rounded display value — this guarantees score is strictly decreasing
+    # (never tied) even when the underlying final/domain_evidence values
+    # collide, so the emitted CSV can never require a candidate_id tie-break.
+    EPS = 2e-6
     for rank, (c, final, trace, conf, _fs) in enumerate(pool[:top_n], start=1):
         tier  = predict_tier(trace)
-        # Write true final_order score. Step down by 1e-6 only where the tail
-        # (ordered by domain_evidence) produces a non-monotone final_order value,
-        # so score-sort always reproduces rank-sort with no flat runs.
-        score = round(final if final < prev else prev - 1e-6, 6)
-        prev  = score
+        raw   = final if final < prev - EPS else prev - EPS
+        score = round(raw, 6)
+        prev  = raw
         rows.append({
             "candidate_id":    c.get("candidate_id", ""),
             "rank":            rank,
