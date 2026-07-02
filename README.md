@@ -15,16 +15,38 @@ rank, so it can never contradict or hallucinate.
 | | |
 |---|---|
 | **Composite score** | **0.7229** (NDCG@10 0.7964 · NDCG@50 0.7417 · MAP 0.3482 · P@10 1.0000) |
-| **Runtime** | ~30s on the full 100K pool — 10x under the 5-minute budget |
+| **Runtime** | ~25s on the full 100K pool — 10x under the 5-minute budget |
 | **Memory** | ~3GB peak — well under the 16GB ceiling |
 | **Compute** | CPU-only. No GPU, no network calls, no hosted LLM/embedding APIs anywhere in the ranking path |
 | **Honeypot rate (top-100)** | 0% — well under the 10% disqualification threshold |
 | **Reproducibility** | Deterministic — byte-identical output across repeated runs |
 
+## Quick start
+
+Starting from nothing — clone, install, run:
+
+```bash
+git clone https://github.com/rutulpatel07/Glassbox.git
+cd Glassbox
+pip install -r requirements.txt
+python3 rank.py --candidates ./candidates.jsonl --out ./submission.csv
+```
+
+`candidates.jsonl` is the organizer-provided 100K candidate pool — not
+committed to this repo (input data, not our code; it's also ~465MB
+uncompressed). Place it in the repo root after cloning, or pass its path via
+`--candidates`.
+
+Expected: **0.7229** composite, ~25s wall-clock, exactly 100 output rows,
+byte-identical on repeat runs. Full breakdown of what the command does is in
+[Architecture](#architecture) below; validation and scoring commands are in
+[Reproduce & validate](#reproduce--validate).
+
 ## Contents
 
-- [Architecture](#architecture)
 - [Quick start](#quick-start)
+- [Architecture](#architecture)
+- [Reproduce & validate](#reproduce--validate)
 - [Design decisions — what we tried and rejected](#design-decisions--what-we-tried-and-rejected)
 - [Score progression](#score-progression)
 - [Repository map](#repository-map)
@@ -72,19 +94,10 @@ Most of the score gain in this project came from one architectural change: decom
 
 This single change (Cascade Variant B → S) took the composite score from 0.6532 to 0.7229 — see [Score progression](#score-progression) below.
 
-## Quick start
+## Reproduce & validate
 
-**Reproduce the submission (one command):**
-
-```bash
-pip install -r requirements.txt
-python3 rank.py --candidates ./candidates.jsonl --out ./submission.csv
-```
-
-`candidates.jsonl` is the organizer-provided 100K candidate pool — not
-committed to this repo (input data, not our code; it's also ~465MB
-uncommpressed). Place it in the repo root, or pass its path via
-`--candidates`.
+Already cloned (see [Quick start](#quick-start) above)? Here's the detail
+behind that one command, plus how to check the result.
 
 Output is spec-compliant: `candidate_id,rank,score,reasoning`, exactly 100
 rows, unique ranks 1–100, strictly decreasing score (so tie-break ordering is

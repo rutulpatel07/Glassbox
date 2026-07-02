@@ -7,9 +7,10 @@ sandbox_demo_link: https://colab.research.google.com/drive/1FeGeNi-Ic3y2cD5Jl2Mw
 ai_tools_declared:
   - Claude  # used for engineering assistance; all ranking and reasoning logic is deterministic, zero LLM in rank.py or reasoning.py
 compute_environment_summary: >
-  CPU-only, ~3.1 GB peak RAM, Python 3.9.6, Apple Silicon M-series.
-  No GPU, no network calls, no LLM or embedding model inference during ranking.
-  Full 100 K pool: ~90 s wall-clock, well inside 5 min / 16 GB budget.
+  MacBook Air, Apple Silicon, 8 CPU cores, macOS 26.5.2, Python 3.12.
+  CPU-only, ~3.1 GB peak RAM. No GPU, no network calls, no LLM or embedding
+  model inference during ranking. Full 100 K pool: ~25 s wall-clock, well
+  inside the 5 min / 16 GB budget.
 team_members:
   - name: Rutul Patel
     email: learn.rutul@gmail.com
@@ -33,5 +34,5 @@ methodology_summary: >
   sort and spec-compliant CSV output. The reasoning column is a deterministic
   readout of the same score trace — every claim is grounded in the candidate's
   profile data and cannot contradict the rank or hallucinate. Scored against
-  500 hand-labeled tiers: COMPOSITE 0.6532 (NDCG@10 0.7699, NDCG@50 0.6019,
-  MAP 0.2511, P@10 1.0000).
+  500 hand-labeled tiers: COMPOSITE 0.7229 (NDCG@10 0.7964, NDCG@50 0.7417,
+  MAP 0.3482, P@10 1.0000).
