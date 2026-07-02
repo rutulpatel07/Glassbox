@@ -1,9 +1,9 @@
 team_name: CampusCollab
-primary_contact_name: Vatsal Trivedi
-primary_contact_email: campuscollab.code@gmail.com
-primary_contact_phone: YOUR_PHONE
-github_repository_url: https://github.com/USERNAME/redrob-ranking
-sandbox_demo_link: https://COLAB_OR_HF_SPACES_LINK
+primary_contact_name: Rutul Patel
+primary_contact_email: learn.rutul@gmail.com
+primary_contact_phone: 9408461802
+github_repository_url: https://github.com/rutulpatel07/Glassbox
+sandbox_demo_link: https://colab.research.google.com/drive/1FeGeNi-Ic3y2cD5Jl2MwsOicGM4P6541?usp=sharing
 ai_tools_declared:
   - Claude  # used for engineering assistance; all ranking and reasoning logic is deterministic, zero LLM in rank.py or reasoning.py
 compute_environment_summary: >
@@ -11,10 +11,10 @@ compute_environment_summary: >
   No GPU, no network calls, no LLM or embedding model inference during ranking.
   Full 100 K pool: ~90 s wall-clock, well inside 5 min / 16 GB budget.
 team_members:
+  - name: Rutul Patel
+    email: learn.rutul@gmail.com
   - name: Vatsal Trivedi
-    email: campuscollab.code@gmail.com
-  - name: Rutul
-    email: RUTUL_EMAIL
+    email: itzvatsal69@gmail.com
 methodology_summary: >
   Glass-box deterministic ranker (no AI/LLM/network during ranking).
   Five-phase pipeline: (1) multiprocessing feature extraction via six scoring

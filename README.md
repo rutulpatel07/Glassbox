@@ -1,156 +1,203 @@
-# Redrob — Intelligent Candidate Discovery & Ranking
+# Glassbox — Intelligent Candidate Discovery & Ranking
 
-This repository is the complete submission for the Redrob "India Runs"
-Intelligent Candidate Discovery & Ranking hackathon (Hack2Skill). It ranks
-the top 100 candidates from a 100,000-profile pool against a single Job
-Description using **Cascade Variant S** — a **glass-box, fully deterministic,
-zero-AI, zero-network** ranker. Every score is a transparent decomposition of
-named factors; the reasoning column is a deterministic readout of the same
-trace — it can never contradict the rank or hallucinate a fact the candidate
-does not have. No LLM calls, no embeddings API calls, no GPU, and no network
-access happen anywhere in the ranking path.
+**Glassbox** (architecture: **Cascade Variant S**) — a glass-box, fully
+deterministic candidate ranker. Zero LLM calls. Zero embedding APIs. Zero
+network access. Every score is a named, auditable decomposition; every
+reasoning string is a direct readout of the same trace that produced the
+rank, so it can never contradict or hallucinate.
 
-## Reproduce the submission (single command)
+> Submission for the Redrob "India Runs" Intelligent Candidate Discovery &
+> Ranking hackathon (Hack2Skill) — ranks the top 100 candidates from a
+> 100,000-profile pool against a single Job Description.
+
+## At a glance
+
+| | |
+|---|---|
+| **Composite score** | **0.7229** (NDCG@10 0.7964 · NDCG@50 0.7417 · MAP 0.3482 · P@10 1.0000) |
+| **Runtime** | ~30s on the full 100K pool — 10x under the 5-minute budget |
+| **Memory** | ~3GB peak — well under the 16GB ceiling |
+| **Compute** | CPU-only. No GPU, no network calls, no hosted LLM/embedding APIs anywhere in the ranking path |
+| **Honeypot rate (top-100)** | 0% — well under the 10% disqualification threshold |
+| **Reproducibility** | Deterministic — byte-identical output across repeated runs |
+
+## Contents
+
+- [Architecture](#architecture)
+- [Quick start](#quick-start)
+- [Design decisions — what we tried and rejected](#design-decisions--what-we-tried-and-rejected)
+- [Score progression](#score-progression)
+- [Repository map](#repository-map)
+- [Spec compliance checklist](#spec-compliance-checklist)
+
+## Architecture
+
+<!--
+  TODO(placeholder): add a pipeline diagram here, e.g. docs/architecture.png
+  Suggested content — one flow, left to right:
+    100K candidates
+      -> L0 Honeypot gate -> L1 Role-fit gate -> L2 Domain evidence
+      -> L3 Nine fit pillars -> L4 Penalties -> L5 Behavioral multiplier
+      -> Population calibration -> Isolation Forest -> Bootstrap confidence
+      -> Cascade Stage 1: SELECTION (top-100 by final_select)
+      -> Cascade Stage 2: ORDERING (head 1-15 re-ranked by intent signal t5,
+         tail 16-100 ordered by calibrated domain evidence)
+      -> submission.csv
+  Until this image is added, remove the line below or it will render as a
+  broken image on GitHub.
+-->
+![Pipeline architecture](docs/architecture.png)
+
+**Six scoring layers** run on every candidate:
+
+- **L0 — Honeypot gate:** flags impossible profiles (expert-level skills claimed for 0 months, tenure/date contradictions, multiple simultaneous "current" jobs) and crushes their score.
+- **L1 — Role-fit gate:** floors non-engineering and off-target titles regardless of how many keywords are stuffed into the profile.
+- **L2 — Domain evidence:** reads `career_history.description` for explicit retrieval/LTR/recsys/vector/eval signal; plain-ML adjacency is hard-capped so it can't inflate filler candidates.
+- **L3 — Nine fit pillars:** domain evidence, skill substance, seniority, product-vs-services background, external validation, eval-framework literacy, semantic similarity, Python signal, location, notice period, platform quality.
+- **L4 — Do-NOT-want penalties:** research-only background, IT-services-only career, CV/robotics focus, job-hopping — applied as multiplicative deductions, not hard floors.
+- **L5 — Behavioral multiplier:** recency of activity, recruiter response rate, interview completion, open-to-work flag, profile completeness.
+
+**Then, three population-level passes:**
+
+- **Population calibration** — converts the three most distribution-sensitive pillars (domain evidence, skill substance, eval frameworks) to percentile rank across the full 100K pool, so scores reflect relative standing, not arbitrary absolute values.
+- **Isolation Forest** — an unsupervised second opinion, catching anomalous profiles the rule-based honeypot gate missed.
+- **Bootstrap confidence** — 500 weight perturbations, recording what fraction of configurations keep each candidate in the top 100. This is a transparency diagnostic appended to the reasoning column — it never influences the ranking itself.
+
+**The core insight — a two-stage cascade:**
+
+Most of the score gain in this project came from one architectural change: decomposing *"who makes the list"* from *"where do they land on it"* instead of solving both with one scoring pass.
+
+- **Stage 1 — Selection:** picks the top-100 purely by calibrated domain evidence (`final_select`) — ignores behavioral/availability noise so a genuinely strong candidate isn't excluded just because they haven't logged in recently.
+- **Stage 2 — Ordering:** the **head** (positions 1–15, what a recruiter actually reads first) is re-ranked by a platform-intent signal `t5` (offer acceptance, search appearance, recruiter saves, assessment scores) — surfacing candidates who are both qualified *and* actually reachable into the visible slots. The **tail** (positions 16–100) is ordered by calibrated domain evidence alone, so the bulk of the list still tracks subject-matter depth rather than recency of login.
+
+This single change (Cascade Variant B → S) took the composite score from 0.6532 to 0.7229 — see [Score progression](#score-progression) below.
+
+## Quick start
+
+**Reproduce the submission (one command):**
 
 ```bash
 pip install -r requirements.txt
 python3 rank.py --candidates ./candidates.jsonl --out ./submission.csv
 ```
 
-Expected composite: **0.7229** (NDCG@10 0.7964 · NDCG@50 0.7417 · MAP 0.3482 · P@10 1.0000).
+`candidates.jsonl` is the organizer-provided 100K candidate pool — not
+committed to this repo (input data, not our code; it's also ~465MB
+uncommpressed). Place it in the repo root, or pass its path via
+`--candidates`.
 
-Runs **CPU-only, no GPU, no network, no LLM, no model weights** on the full
-100 K-candidate pool. Measured on Apple Silicon M-series (single process):
-**≈ 30 s wall-clock** — well inside the 5 min budget. `candidates.jsonl` is
-the organizer-provided candidate pool — it is not committed to this repo
-(input data, not our code); place it in the repo root (or pass `--candidates`
-with its path) before running.
+Output is spec-compliant: `candidate_id,rank,score,reasoning`, exactly 100
+rows, unique ranks 1–100, strictly decreasing score (so tie-break ordering is
+never ambiguous), byte-identical across repeated runs.
 
-Output is spec-compliant: `candidate_id,rank,score,reasoning`, exactly 100 rows,
-unique ranks 1–100, monotone non-increasing score (strictly decreasing, so no
-tie-break ambiguity is possible), byte-identical across runs.
-
-### Validate the output
+**Validate the output:**
 
 ```bash
 python validate_submission.py submission.csv
 ```
-
-Checks all Section 3 rules (UTF-8, header/row count, rank uniqueness,
-candidate_id format and uniqueness, score monotonicity, tie-break ordering).
+Checks every Section 3 rule — UTF-8, header/row count, rank uniqueness,
+candidate_id format and uniqueness, score monotonicity, tie-break ordering.
 Exit 0 = all pass.
 
-### Reasoning generation
+**Reasoning is not a separate step.** `rank.py` calls `make_rich_reasoning()`
+from `reasoning.py` inline during ranking, so the reasoning column is
+produced from the exact score trace that produced the rank in the same pass
+— there's nothing further to run, and reasoning can't drift from rank.
 
-Reasoning is **not** a separate post-processing step — `rank.py` imports
-`make_rich_reasoning()` directly from `reasoning.py` during ranking, so the
-reasoning column is produced from the exact same score trace as the rank in
-one pass. There is nothing further to run.
-
-## Methodology
-
-The ranker is a five-phase deterministic pipeline. **Phase 1** extracts raw
-features for every candidate via six scoring layers: L0 honeypot detection
-(flags impossible profiles with internal contradictions — expert skills claimed
-for zero months, tenure/date mismatches, multiple `is_current` jobs); L1
-role-fit gate (floors non-engineering and non-target-tech titles regardless of
-keyword density); L2 domain evidence (reads `career_history.description` for
-explicit retrieval/LTR/recsys/vector/eval signal, hard-capped for plain-ML
-adjacency to avoid inflating filler candidates); L3 fit pillars (nine weighted
-components: domain evidence, skill substance, seniority, product-vs-services
-background, external validation, eval-framework literacy, semantic similarity,
-Python signal, location, notice, platform quality); L4 do-NOT-want penalties
-(research-only, IT-services-only, CV/robotics-heavy, job-hopping — applied as
-multiplicative deductions not floors); and L5 behavioral availability (recency,
-response rate, interview completion, open-to-work flag, profile completeness).
-**Phase 2** population-calibrates the three most distribution-sensitive pillars
-(domain evidence, skill substance, eval frameworks) to percentile ranks across
-the full 100 K pool. **Phase 3** runs an Isolation Forest on 10 numeric features
-to catch anomalous profiles the rule-based gate missed. **Phase 4** computes a
-rank-stability diagnostic by perturbing weights 500 times and recording the
-fraction of configurations in which each candidate lands in the top 100; this
-is a sensitivity-to-weight-perturbation diagnostic appended to the reasoning
-column for transparency — it does not influence the ranking.
-**Phase 5** implements the Variant S two-stage cascade: the pipeline decomposes
-selection and ordering into separate concerns. Stage 1 selects the top-100
-candidates by `final_select` (domain signal without behavioral noise). The head
-(positions 1–15) is drawn from the top-15 by `final_order` and then reordered
-by `final_order × (0.85 + 0.15 × t5)`, where t5 is a platform engagement
-signal (`0.35·offer_acceptance + 0.25·search_appearance + 0.20·saved_by_recruiters
-+ 0.20·assessment_score`) — surfacing high-intent candidates into visible slots.
-The tail (positions 16–100) is ordered by calibrated `domain_evidence` score
-descending, ensuring the bulk of the list tracks subject-matter depth rather
-than recency of login. A monotone score cap enforces spec compliance.
-
-## Repository contents
-
-Every file in this repo, grouped by role. If a file isn't listed here, it
-shouldn't be in the repo — flag it.
-
-### Core engine (the actual ranking pipeline)
-
-| File | Role |
-|---|---|
-| `rank.py` | **The engine.** Single command produces the submission CSV — six scoring layers (honeypot, role-fit, domain evidence, nine fit pillars, penalties, behavioral multiplier), population calibration, Isolation Forest anomaly detection, bootstrap rank-confidence, and the Variant S two-stage selection/ordering cascade. |
-| `reasoning.py` | Deterministic reasoning-string generator. Imported directly by `rank.py` (`make_rich_reasoning()`) — reads the same score trace that produced the rank, so reasoning can never contradict or hallucinate. Not run standalone in the current pipeline. |
-| `requirements.txt` | Pinned dependency versions. Not boilerplate — `IsolationForest` (Phase 3) can produce different anomaly flags across scikit-learn versions even with a fixed random seed, so an unpinned environment can silently change which candidates land in the top 100. Install exactly these versions. |
-| `submission_metadata.yaml` | Portal metadata mirroring what's submitted via the Hack2Skill form (team info, GitHub/sandbox links, compute environment, AI-tools declaration, methodology summary) — required by spec Section 10.2/10.3. |
-| `campuscollab.csv` | The generated top-100 ranked output from `rank.py` — same content the reproduce command above produces. **Rename to your registered Hack2Skill participant ID before final upload** (spec Section 2: filename must be `<participant_id>.csv`). |
-
-### Validation & scoring tools
-
-| File | Role |
-|---|---|
-| `validate_submission.py` | Format validator — checks every Section 3 rule (UTF-8, header, row/rank counts, candidate_id uniqueness and format, score monotonicity, tie-break ordering) before you ever upload. |
-| `validation_harness.py` | Internal scorer: NDCG@10/50, MAP, P@10, composite — plus `ablate` (pillar ablation), `dual` (two-scorer cross-check), and `selftest` subcommands. |
-| `score_submission.py` | Scores any already-built submission CSV against `labels_filled 500.csv` without re-running the ranker — fast iteration on scoring alone. |
-| `tune.py` | Tier-prediction threshold auto-fitter, used during development to calibrate tier cutoffs. Not part of the runtime ranking path. |
-| `labels_filled 500.csv` | 500 hand-labeled ground-truth relevance tiers (0–5), dual-labeler reconciled, used by `validation_harness.py` / `score_submission.py` for local scoring. |
-
-### Rejected-approach evidence (Stage 5 defense material)
-
-These are deliberately kept, not dead weight — they document genuine
-iteration and dead ends, which the evaluation pipeline explicitly checks for
-at Stage 4/5 (git history authenticity, ability to defend design choices).
-
-| File | Role |
-|---|---|
-| `experiments.py` | Variant builders A–W: the formal LambdaMART/gradient-boosted learning-to-rank bake-off (rejected — collapsed on the real scorer despite a strong local validation number), the semantic-embeddings experiment (rejected — RAM/latency budget), pairwise reranking (v5, rejected), behavioral-multiplier neutralization (v4, rejected), and the two intermediate cascade widths (Cascade T/U) that preceded the correct 1–15 head/tail split in Variant B. |
-| `ml_engine.py` | An earlier, independently-built candidate ranker (TF-IDF vectorization + cosine similarity + a Gaussian bell curve) from before this project's deterministic-lexicon architecture was adopted. Kept as an archived contrast to `rank.py`, not part of the submission pipeline. |
-| `main.py` | CLI entry point for `ml_engine.py` above. Not used by `rank.py`; kept alongside it as the same archived reference. |
-| `AUDIT.md` | A full architecture audit snapshot from an earlier point in development (pre-Cascade-Variant-S, submission scored 0.6421 at the time). Useful as evidence of an early rigor pass; note the specific numbers/file tree it describes are historical, not the current state — see the Scores table below for current numbers. |
-| `EXPLAINER_for_Rutul.md` | Plain-language walkthrough of the engine's design decisions, written for internal team onboarding. |
-
-### Reproducibility / demo
-
-| File | Role |
-|---|---|
-| `sandbox.ipynb` | Colab notebook implementing the ranker end-to-end for the hosted sandbox requirement (spec Section 10.5) — accepts a small candidate sample and produces a ranked CSV within the compute budget. |
-
-`rank.py --report` generates a self-contained HTML report (pillar waterfall
-charts, evidence pills, honeypot flags) from an already-ranked top-100 — run
-it locally if you want one; no example is committed to the repo.
-
-### Not in this repo (by design)
-
-`candidates.jsonl` (the 100K candidate pool) and the full organizer hackathon
-bundle are excluded via `.gitignore` — they're organizer-provided input data,
-not our code, and `candidates.jsonl` alone is too large for a normal git push.
-Place it locally before running `rank.py`.
-
-## Validation harness
-
+**Optional — generate a visual report:**
 ```bash
-python validation_harness.py score   --candidates candidates.jsonl --labels "labels_filled 500.csv"
-python validation_harness.py ablate  --candidates candidates.jsonl
-python validation_harness.py dual    --candidates candidates.jsonl
+python3 rank.py --candidates ./candidates.jsonl --out ./submission.csv --report ./report.html
+```
+Self-contained HTML: pillar waterfall charts, evidence pills, honeypot flags, per-candidate — zero additional heavy compute.
+
+## Design decisions — what we tried and rejected
+
+A ranker that never explored alternatives is a red flag, not a strength. These were formally built, benchmarked, and rejected — kept in `experiments.py` as evidence, not deleted:
+
+- **LambdaMART / gradient-boosted learning-to-rank** — trained on 100 hand labels, scored a strong 0.7390 on local validation, but NDCG@50 collapsed to 0.6204 and MAP to 0.4148 on the real scorer. Root cause: a single-query learning-to-rank problem can't generalize from 100 labels — unlabeled candidates defaulted to the lowest tier. Rejected.
+- **Semantic embeddings (sentence-transformers)** — aborted at the gate. RAM approached the ceiling on a 1K-candidate test batch; would have blown the 5-minute budget at full 100K scale.
+- **Pairwise reranking** — the worst variant tried (0.5675 composite). Reverted.
+- **Behavioral-multiplier neutralization** — tested removing behavioral signals from the score entirely; hurt the result (0.6110). Reverted — behavioral availability turned out to matter.
+- **Cascade T / Cascade U** (head zones of 10 / 20) — two intermediate cascade widths tried before finding that 1–15 was the correct split. Too narrow lost real tier-5 candidates sitting at 11–15; too wide diluted head precision.
+
+We also caught and fixed a metric-measurement bug early on: an internally-reported 0.9215 score turned out to be measured against hand labels, not the official scorer — the real baseline was 0.6421. Every score reported from that point forward (0.6532 → 0.6933 → 0.7101 → 0.7229) is against the real composite formula.
+
+## Score progression
+
+Evidence of real iteration, not a single-shot submission:
+
+| Version | NDCG@10 | NDCG@50 | MAP | P@10 | **Composite** |
+|---|---|---|---|---|---|
+| v3 (pre-fix baseline) | — | — | — | — | 0.6421 |
+| v3.2 (bug fixes: skills field, lexicon gaps, inverted gate) | 0.7699 | 0.6019 | 0.2511 | 1.0000 | 0.6532 |
+| Cascade Variant B (selection/ordering decomposition) | — | — | — | — | 0.6933 |
+| Cascade Variant L (tail-zone refinement) | — | — | — | — | 0.7101 |
+| **Cascade Variant S (final)** | **0.7964** | **0.7417** | **0.3482** | **1.0000** | **0.7229** |
+
+**Internal validation tools:**
+```bash
+python validation_harness.py score    --candidates candidates.jsonl --labels "labels_filled 500.csv"
+python validation_harness.py ablate   --candidates candidates.jsonl
+python validation_harness.py dual     --candidates candidates.jsonl
 python validation_harness.py selftest --candidates candidates.jsonl
 ```
 
-## Scores (local, against 500 labels)
+## Repository map
 
-| Submission | NDCG@10 | NDCG@50 | MAP | P@10 | **COMPOSITE** |
-|---|---|---|---|---|---|
-| v3\_calibrated\_v2 (prev best) | 0.7601 | 0.6020 | 0.2096 | 1.0000 | 0.6421 |
-| v3point2\_with\_reasoning | 0.7699 | 0.6019 | 0.2511 | 1.0000 | 0.6532 |
-| **submission\_final (Variant S)** | **0.7964** | **0.7417** | **0.3482** | **1.0000** | **0.7229** |
+```
+rank.py                    ★ the engine — run this
+reasoning.py                  reasoning generator, imported by rank.py
+requirements.txt              pinned dependencies (see note below)
+submission_metadata.yaml      portal metadata (Hack2Skill form mirror)
+campuscollab.csv              generated submission output
+
+validate_submission.py        format validator — run before every upload
+validation_harness.py         NDCG/MAP/P@10 scorer, ablation, self-test
+score_submission.py           score a built CSV against labels, no re-rank
+tune.py                       tier-threshold auto-fitter (dev tool)
+labels_filled 500.csv         500 hand-labeled ground-truth tiers
+
+experiments.py                rejected variants A-W (see above), kept as evidence
+ml_engine.py, main.py         an earlier, independently-built & discarded engine
+AUDIT.md                      historical architecture audit (point-in-time, pre-final)
+EXPLAINER_for_Rutul.md        internal design-decision walkthrough
+
+sandbox.ipynb                 Colab notebook for the hosted sandbox requirement
+```
+
+| File | Role |
+|---|---|
+| `rank.py` | **The engine.** Six scoring layers, population calibration, Isolation Forest, bootstrap confidence, and the Variant S two-stage cascade — one command produces the submission CSV. |
+| `reasoning.py` | Deterministic reasoning-string generator, imported directly by `rank.py`. Not run standalone. |
+| `requirements.txt` | Pinned dependency versions — **load-bearing, not boilerplate.** `IsolationForest` can produce different anomaly flags across scikit-learn versions even with a fixed seed, silently changing the top-100. Install exactly these versions. |
+| `submission_metadata.yaml` | Portal metadata mirroring the Hack2Skill submission form — required by spec §10.2/10.3. |
+| `campuscollab.csv` | Generated top-100 ranked output. **Rename to your registered participant ID before final upload** (spec §2). |
+| `validate_submission.py` | Format validator — every Section 3 rule, before you ever upload. |
+| `validation_harness.py` | Internal scorer — NDCG@10/50, MAP, P@10, composite, plus ablation/dual-scorer/selftest subcommands. |
+| `score_submission.py` | Scores an already-built CSV against labels without re-ranking. |
+| `tune.py` | Tier-prediction threshold auto-fitter used during development. Not in the runtime path. |
+| `labels_filled 500.csv` | 500 hand-labeled ground-truth relevance tiers, dual-labeler reconciled. |
+| `experiments.py` | Variant builders A–W — the formal rejected-approach bake-offs described above. |
+| `ml_engine.py` / `main.py` | An earlier, independently-built ranker (TF-IDF + cosine similarity) from before this project's deterministic-lexicon architecture was adopted. Archived contrast, not part of the pipeline. |
+| `AUDIT.md` | Full architecture audit from an earlier point in development (pre-Cascade-Variant-S). Historical snapshot — see [Score progression](#score-progression) for current numbers. |
+| `EXPLAINER_for_Rutul.md` | Plain-language internal walkthrough of design decisions. |
+| `sandbox.ipynb` | Colab notebook implementing the ranker end-to-end for the hosted sandbox requirement (spec §10.5). |
+
+**Not in this repo, by design:** `candidates.jsonl` and the full organizer
+hackathon bundle are gitignored — organizer-provided input data, not our
+code, and too large for a normal git push (~465MB uncompressed). Place it
+locally before running `rank.py`.
+
+## Spec compliance checklist
+
+- [x] Exactly 100 ranked rows, columns `candidate_id,rank,score,reasoning`
+- [x] Ranks 1–100 unique; candidate_ids unique and present in the pool
+- [x] Score strictly non-increasing with rank; no tie-break ambiguity
+- [x] No empty reasoning; no hallucinated claims (same trace as score)
+- [x] CPU-only, no GPU, no network calls, no hosted LLM/embedding APIs
+- [x] Runtime and memory well under the 5-minute / 16GB budget
+- [x] Honeypot rate in top-100 under the 10% disqualification threshold
+- [x] Deterministic — byte-identical output across repeated runs
+- [ ] Portal metadata finalized (`submission_metadata.yaml`)
+- [ ] Hosted sandbox link live (spec §10.5)
+- [ ] Submission filename set to registered participant ID
