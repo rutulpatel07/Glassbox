@@ -54,20 +54,6 @@ byte-identical on repeat runs. Full breakdown of what the command does is in
 
 ## Architecture
 
-<!--
-  TODO(placeholder): add a pipeline diagram here, e.g. docs/architecture.png
-  Suggested content — one flow, left to right:
-    100K candidates
-      -> L0 Honeypot gate -> L1 Role-fit gate -> L2 Domain evidence
-      -> L3 Nine fit pillars -> L4 Penalties -> L5 Behavioral multiplier
-      -> Population calibration -> Isolation Forest -> Bootstrap confidence
-      -> Cascade Stage 1: SELECTION (top-100 by final_select)
-      -> Cascade Stage 2: ORDERING (head 1-15 re-ranked by intent signal t5,
-         tail 16-100 ordered by calibrated domain evidence)
-      -> submission.csv
-  Until this image is added, remove the line below or it will render as a
-  broken image on GitHub.
--->
 ![Pipeline architecture](docs/architecture.png)
 
 **Six scoring layers** run on every candidate:
